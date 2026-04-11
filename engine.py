@@ -11,11 +11,10 @@ import time
 import base64
 from urllib.parse import urlparse, parse_qs
 
-# Engine v32.2: THE OMNI TITAN GHOUL (UNIVERSAL RESILIENCE)
-# Designed for 100% stability on Cloud IPs using Multi-Mirror Fallback.
-# Feature 1: Unicode-Safe Core (Handling Indian business names without crashes).
-# Feature 2: Multi-Mirror Discovery (Bing + DuckDuckGo Proxy Sequential Probing).
-# Feature 3: Strict B2B Filter (Collecting platforms ONLY, Rejecting existing websites).
+# Engine v33.0: THE ETERNAL TITAN (REGISTRY DISCOVERY)
+# Designed for 100% stability. Bypasses blocked search mirrors.
+# Strategy: Registry Mirror discovery (JustDial) + Platform Cross-Check.
+# Constraint: Strictly ZERO WEBSITE. Only capture high-intent Social-Only plays.
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_STORE = "/data" if os.path.exists("/data") else PROJECT_ROOT
@@ -30,7 +29,6 @@ USER_AGENTS = [
 ]
 
 PLATFORM_DOMAINS = ["facebook.com", "instagram.com", "zomato.com", "swiggy.com", "justdial.com", "linkedin.com", "indiamart.com", "magicbricks.com", "99acres.com"]
-GARBAGE_KEYWORDS = ["CRA Result", "Account", "Login", "Profile", "Privacy", "Manage", "Sign in", "Metadata", "Bing", "Search"]
 
 def get_headers():
     return {
@@ -40,8 +38,7 @@ def get_headers():
         "Referer": "https://www.google.com/"
     }
 
-def safe_str(text):
-    """Universal Unicode handling for stable logging and storage"""
+def clean_name(text):
     if not text: return ""
     return text.encode('ascii', 'ignore').decode('ascii').strip()
 
@@ -63,100 +60,116 @@ class Vault:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("INSERT OR REPLACE INTO leads_3 (niche, location, company_name, website, phone, email, social, score, source) VALUES (?,?,?,?,?,?,?,?,?)",
-                             (niche, location, lead["Name"], "None", "None", lead.get("Email","None"), lead.get("Social","None"), lead.get("Score", 8.5), lead.get("Source", "v32.2")))
+                             (niche, location, lead["Name"], "None", "None", lead.get("Email","None"), lead.get("Social","None"), lead.get("Score", 8.5), lead.get("Source", "v33.0")))
                 conn.commit()
         except: pass
 
-def probe_mirror(niche, location, target, mirror_type="bing"):
-    """Multi-Mirror Discovery: Handles both Bing and DuckDuckGo proxies"""
+def probe_registry_mirror(niche, location, target):
+    """Registry Hub: Direct Mirror of local Indian B2B registry"""
     results = []
-    print(f"DEBUG: Tapping {mirror_type.upper()} Mirror for '{niche}'...", flush=True)
+    print(f"DEBUG: Tapping Registry Mirror for '{niche}'...", flush=True)
     
-    q = f'"{niche}" {location} India (facebook OR instagram OR justdial)'
-    if mirror_type == "bing":
-        url = f"https://www.bing.com/search?q={requests.utils.quote(q)}&cc=IN"
-    else:
-        url = f"https://duckduckgo.com/html/?q={requests.utils.quote(q)}"
-        
+    city = location.lower().replace(' ', '-')
+    service = niche.lower().replace(' ', '-')
+    url = f"https://www.justdial.com/{city}/{service}/"
+    
     try:
         r = requests.get(url, headers=get_headers(), timeout=15)
         if r.status_code == 200:
             soup = BeautifulSoup(r.text, 'html.parser')
-            # Look for H2/H3 headlines and result links
-            selectors = ['.b_algo h2 a', '.result__title a', 'h2 a', 'h3 a']
-            for selector in selectors:
-                if results: break
-                for a in soup.select(selector):
-                    if len(results) >= target * 2: break
-                    link = a.get('href', '').lower()
-                    title = a.text.strip()
-                    
-                    if any(x.lower() in title.lower() for x in GARBAGE_KEYWORDS): continue
-                    
-                    name = title.split('|')[0].split('-')[0].split(':')[0].strip()
-                    if len(name) < 3: continue
-                    
-                    results.append({"Name": name, "Link": link, "Source": mirror_type.capitalize()})
-                    print(f"PROGRESS:{len(results)}:{(target*2)}:Indexed: {safe_str(name)[:15]}", flush=True)
-        time.sleep(random.uniform(5, 10))
+            # Look for business name entries
+            for entry in soup.select('li.cntanr, div.result-title'):
+                if len(results) >= target + 5: break
+                
+                name_tag = entry.select_one('.lng_cont_name, h2, span.jcn a')
+                if not name_tag: continue
+                name = name_tag.text.strip()
+                if len(name) < 3: continue
+                
+                # Sakt Website Shield
+                web_btn = entry.select_one('span.web_icw, a[href*="http"]')
+                if web_btn:
+                    # Ignore businesses with existing website buttons
+                    continue
+                
+                results.append({"Name": name, "Link": "None", "Source": "Registry"})
+                print(f"PROGRESS:{len(results)}:{(target+5)}:REGISTRY: {clean_name(name)[:18]}", flush=True)
+        time.sleep(random.uniform(5, 8))
     except: pass
+    
+    # FALLBACK: If JustDial mirror is blocked, use search mirror specifically for platforms
+    if not results:
+        print("DEBUG: Registry Throttled. Switching to Social Mirror...", flush=True)
+        q = f'"{niche}" {location} India (site:facebook.com OR site:zomato.com)'
+        url = f"https://www.bing.com/search?q={requests.utils.quote(q)}&cc=IN"
+        try:
+            r = requests.get(url, headers=get_headers(), timeout=12)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, 'html.parser')
+                for a in soup.select('.b_algo h2 a, a'):
+                    if len(results) >= target: break
+                    link = a.get('href', '').lower()
+                    if any(p in link for p in PLATFORM_DOMAINS):
+                        name = a.text.split('|')[0].split('-')[0].strip()
+                        results.append({"Name": name, "Link": link, "Source": "Social-Index"})
+                        print(f"PROGRESS:{len(results)}:{target}:SOCIAL: {clean_name(name)[:18]}", flush=True)
+        except: pass
+        
     return results
 
-def verify_and_score(name, location):
-    q = f'"{name}" {location} India social'
+def verify_social(name, location):
+    """Jackpot Check: Ensures business is active on platforms"""
+    q = f'"{name}" {location} India instagram facebook'
     url = f"https://www.bing.com/search?q={requests.utils.quote(q)}&cc=IN"
-    found_url = "None"
-    score = 8.8
+    social_url = "None"
+    score = 8.5
     try:
-        r = requests.get(url, headers=get_headers(), timeout=12)
+        r = requests.get(url, headers=get_headers(), timeout=10)
         if r.status_code == 200:
             soup = BeautifulSoup(r.text, 'html.parser')
             for a in soup.select('.b_algo h2 a, a'):
                 link = a.get('href', '').lower()
                 if any(p in link for p in PLATFORM_DOMAINS):
-                    found_url = link
+                    social_url = link
                     score = 9.8
                     break
     except: pass
-    return found_url, score
+    return social_url, score
 
 def hunt(niche, location, target):
     if "state" in niche.lower() and "real" in niche.lower(): niche = "Real Estate"
-    print(f">>> Omni Titan Ghoul v32.2 Active. Prospected for '{niche}' in {location}...", flush=True)
+    print(f">>> Eternal Titan v33.0 Active. Indexing {location}...", flush=True)
     
-    # 1. MULTI-MIRROR DISCOVERY
-    discovery_bank = probe_mirror(niche, location, target, "bing")
-    if not discovery_bank:
-        discovery_bank = probe_mirror(niche, location, target, "duckduckgo")
-        
-    final_prospects = []
+    # 1. DISCOVERY
+    bank = probe_registry_mirror(niche, location, target)
+    
+    final_leads = []
     vault = Vault()
-    for i, lead in enumerate(discovery_bank):
-        if len(final_prospects) >= target: break
+    for i, lead in enumerate(bank):
+        if len(final_leads) >= target: break
         
-        # Sakt Gatekeeper (Stage 1): Discard if direct Mirror link is a custom domain
-        is_independent = not any(p in lead['Link'].lower() for p in PLATFORM_DOMAINS)
-        if is_independent: continue
-            
-        # Throttling for Cloud Safety
-        delay = random.uniform(8, 15)
-        print(f"DEBUG: Analysis Delay ({delay:.1f}s)...", flush=True)
+        # CLOUD PROTECTOR (Throttling)
+        delay = random.uniform(10, 15)
+        print(f"DEBUG: Human-Speed Link Analysis ({delay:.1f}s)...", flush=True)
         time.sleep(delay)
         
-        # 2. VERIFICATION
-        social_url, score = verify_and_score(lead['Name'], location)
+        # 2. VERIFICATION (Jackpot)
+        platform_url, score = verify_social(lead['Name'], location)
+        
+        # QUALITY GATE: If it's a social discovery, it's already a jackpot
+        # If it's a registry discovery, we accept it as is (since we confirmed NO website button)
         
         final_lead = {
-            "Name": lead['Name'], "Social": social_url, "Score": score, 
-            "Source": f"Titan+{social_url.split('.')[1].capitalize() if social_url != 'None' else 'Index'}"
+            "Name": lead['Name'], "Social": platform_url, "Score": score, 
+            "Source": f"Titan+{platform_url.split('.')[1].capitalize() if platform_url != 'None' else 'Registry'}"
         }
         
         vault.save(niche, location, final_lead)
-        final_prospects.append(final_lead)
-        print(f"PROGRESS:{len(final_prospects)}:{target}:SECURED JACKPOT: {safe_str(lead['Name'])[:20]}", flush=True)
+        final_leads.append(final_lead)
+        print(f"PROGRESS:{len(final_leads)}:{target}:SECURED GOLD: {clean_name(lead['Name'])[:20]}", flush=True)
 
-    print(f">>> Ghost Session Finished. {len(final_prospects)} jackpot prospects secured.", flush=True)
-    return final_prospects
+    print(f">>> Titan Session Finished. {len(final_leads)} jackpot prospects secured.", flush=True)
+    return final_leads
 
 if __name__ == "__main__":
     if len(sys.argv) < 4: sys.exit(1)
@@ -172,6 +185,6 @@ if __name__ == "__main__":
                 writer.writerow({
                     "Company Name": d["Name"], "Website": "None",
                     "WhatsApp": "None", "Email ID": "None",
-                    "Social": d.get("Social","None"), "Score": d["Score"], "Source": d.get("Source", "v32.2")
+                    "Social": d.get("Social","None"), "Score": d["Score"], "Source": d.get("Source", "v33.0")
                 })
     print("DONE", flush=True)
