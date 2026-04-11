@@ -27,7 +27,8 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 # Paths
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_ROOT = "/data" if os.path.exists("/data") else ROOT
-DB_PATH = f'sqlite:///{os.path.join(DATA_ROOT, "leads_v10.db")}'
+DB_NAME = "leads_production_v3.db"
+DB_PATH = f'sqlite:///{os.path.join(DATA_ROOT, DB_NAME)}'
 app.config['SQLALCHEMY_DATABASE_URI'] = DB_PATH
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -70,7 +71,7 @@ hunt_status = {"is_running": False, "progress": "Ready", "percent": 0, "last_res
 def run_hunt(ctx, user_id, niche, location, count):
     with ctx:
         try:
-            hunt_status.update({"is_running": True, "progress": "Launching Engine v17.1 (RSS Dominator)...", "percent": 5, "last_result": None})
+            hunt_status.update({"is_running": True, "progress": "Launching Engine v22.1 (Anti-Block Mode)...", "percent": 5, "last_result": None})
             print(f">>> STARTING HUNT: {niche} in {location}", flush=True)
             
             batch = Batch(user_id=user_id, niche=niche, location=location)
@@ -79,7 +80,9 @@ def run_hunt(ctx, user_id, niche, location, count):
 
             engine_path = os.path.join(ROOT, "engine.py")
             csv_path = os.path.join(ROOT, "leads.csv")
-            if os.path.exists(csv_path): os.remove(csv_path)
+            if os.path.exists(csv_path):
+                try: os.remove(csv_path)
+                except: pass
 
             proc = subprocess.Popen(
                 [sys.executable, engine_path, niche, location, str(count)],
@@ -93,7 +96,7 @@ def run_hunt(ctx, user_id, niche, location, count):
                 if line:
                     line = line.strip()
                     full_log.append(line)
-                    print(f"ENGINE: {line}", flush=True)
+                    print(f"ENGINE LOG: {line}", flush=True)
                     if line.startswith("PROGRESS:"):
                         parts = line.split(":")
                         if len(parts) >= 4:
@@ -107,6 +110,7 @@ def run_hunt(ctx, user_id, niche, location, count):
 
             if os.path.exists(csv_path):
                 import csv
+                leads_added = 0
                 with open(csv_path, 'r', encoding='utf-8', errors='replace') as f:
                     reader = csv.DictReader(f)
                     for row in reader:
@@ -117,18 +121,19 @@ def run_hunt(ctx, user_id, niche, location, count):
                             phone=row.get('WhatsApp', 'None'), 
                             email=row.get('Email ID', 'None'), 
                             social=row.get('Social', 'None'),
-                            source=row.get('Source', 'v17.1'),
+                            source=row.get('Source', 'v22.1'),
                             score=float(row.get('Score', 5.0))
                         ))
+                        leads_added += 1
                     db.session.commit()
-                hunt_status["last_result"] = f"Success: Data imported into vault."
+                hunt_status["last_result"] = f"Success: {leads_added} leads imported into vault."
             else:
-                log_tail = " | ".join(full_log[-5:]) if full_log else "No output"
-                hunt_status["last_result"] = f"Failure: 0 leads. Log: {log_tail}"
+                log_tail = " | ".join(full_log[-5:]) if full_log else "No output from engine"
+                hunt_status["last_result"] = f"Failure: 0 leads. Log tail: {log_tail}"
 
         except Exception as e:
-            print(f">>> HUNT ERROR: {e}", flush=True)
-            hunt_status["last_result"] = f"Error: {str(e)}"
+            print(f">>> HUNT SYSTEM ERROR: {e}", flush=True)
+            hunt_status["last_result"] = f"Critical Error: {str(e)}"
         finally:
             hunt_status["is_running"] = False
 
@@ -148,23 +153,23 @@ def register():
     if request.method == 'GET': return send_from_directory(ROOT, 'register.html')
     data = request.json or {}
     if User.query.filter_by(username=data.get('username')).first(): return jsonify({"status": "error"}), 400
-    db.session.add(User(username=data.get('username'), password_hash=generate_password_hash(data.get('password'))))
+    user = User(username=data.get('username'), password_hash=generate_password_hash(data.get('password')))
+    db.session.add(user)
     db.session.commit()
+    login_user(user, remember=True)
     return jsonify({"status": "success"})
 
 # Health Check for Render
 @app.route('/health')
 def health_check():
-    return jsonify({"status": "ok"}), 200
+    return jsonify({"status": "ok", "db": "connected"}), 200
 
-# Lazy DB Initialization to prevent startup timeout
-@app.before_request
-def initialize_database():
-    if not getattr(app, 'db_initialized', False):
+# Better DB Initialization
+def init_db():
+    with app.app_context():
         try:
             db.create_all()
-            app.db_initialized = True
-            print(">>> Database initialized on first request.", flush=True)
+            print(">>> Database initialized successfully.", flush=True)
         except Exception as e:
             print(f">>> DB Init Error: {e}", flush=True)
 
@@ -198,12 +203,36 @@ def get_data():
         "leads": [{"Name": l.name, "Website": l.website, "Phone": l.phone, "Email": l.email, "Social": l.social, "Score": l.score} for l in b.leads]
     } for b in batches])
 
+@app.route('/export/csv')
+@login_required
+def export_csv():
+    import io
+    from flask import make_response
+    batches = Batch.query.filter_by(user_id=current_user.id).all()
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=["Niche", "Location", "Company", "Website", "Email", "Phone", "Score"])
+    writer.writeheader()
+    for b in batches:
+        for l in b.leads:
+            writer.writerow({
+                "Niche": b.niche, "Location": b.location, "Company": l.name,
+                "Website": l.website, "Email": l.email, "Phone": l.phone, "Score": l.score
+            })
+    
+    response = make_response(output.getvalue())
+    response.headers["Content-Disposition"] = "attachment; filename=leads_export.csv"
+    response.headers["Content-type"] = "text/csv"
+    return response
+
 @app.route('/')
 @login_required
 def index(): return send_from_directory(ROOT, 'index.html')
 
 @app.route('/logout')
 def logout(): logout_user(); return jsonify({"status": "success"})
+
+# Ensure DB is ready
+init_db()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
