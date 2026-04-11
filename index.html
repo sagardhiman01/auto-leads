@@ -162,9 +162,48 @@
         .btn-logout { background: transparent; border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; padding: 0.6rem 1.2rem; font-size: 0.85rem; font-weight: 700; }
         .btn-logout:hover { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; box-shadow: none; transform: none; }
 
-        @media (max-width: 800px) {
-            .search-grid { grid-template-columns: 1fr; }
-            header { flex-direction: column; gap: 1rem; text-align: center; }
+        /* --- RESPONSIVE DESIGN --- */
+
+        /* Desktop (Large Screens) */
+        @media (min-width: 1200px) {
+            .container { max-width: 1200px; }
+        }
+
+        /* Tablet (768px to 1024px) */
+        @media (max-width: 1024px) {
+            .search-grid { 
+                grid-template-columns: 1fr 1fr; 
+                gap: 1.5rem;
+            }
+            .btn-hunt { grid-column: span 2; }
+            #count { grid-column: span 2; }
+        }
+
+        /* Mobile (Below 768px) */
+        @media (max-width: 767px) {
+            .container { padding: 1rem; }
+            header { 
+                flex-direction: column; 
+                gap: 1.5rem; 
+                padding: 1.5rem; 
+                text-align: center;
+            }
+            .search-grid { 
+                grid-template-columns: 1fr; 
+                padding: 1rem;
+            }
+            .btn-hunt, #count { grid-column: span 1; }
+            
+            .batch-card { padding: 1.5rem 1rem; }
+            .batch-header { flex-direction: column; gap: 1rem; align-items: flex-start; }
+            
+            /* Horizontal Scroll for Table on small screens */
+            .table-container { 
+                overflow-x: auto; 
+                margin: 0 -1rem; 
+                padding: 0 1rem;
+            }
+            .lead-table { min-width: 600px; }
         }
     </style>
 </head>
@@ -270,6 +309,7 @@
                             Export CSV
                         </a>
                     </div>
+                    <div class="table-container">
                     <table class="lead-table">
                         <thead>
                             <tr>
@@ -305,6 +345,7 @@
                             }).join('')}
                         </tbody>
                     </table>
+                    </div>
                 </div>
             `).join('');
         }
