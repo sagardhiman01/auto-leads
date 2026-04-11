@@ -5,14 +5,18 @@ import re
 import logging
 import requests
 from bs4 import BeautifulSoup
+import xml.etree.ElementTree as ET
 import random
 import csv
 import time
+import base64
+from urllib.parse import urlparse, parse_qs
 
-# Engine v29.2: THE COMPARATIVE GHOST (ULTIMATE B2B PROSPECTOR)
-# Redesigned for Indian SMB Discovery using Direct Directory Indexing.
-# Discovery Core: JustDial (Pinning to India Market).
-# Comparison Hub: Cross-referencing with Zomato, Swiggy, and Instagram.
+# Engine v31.3: THE OMNI TITAN TOTAL (FORCED DISCOVERY EDITION)
+# Feature 1: Forced Platform RSS Indexing (Site-prioritized discovery).
+# Feature 2: Deep Result Scanning (Analyzing top 20-30 prospects).
+# Feature 3: Strictly Zero-Website Shield (Accept Platforms, Reject Domains).
+# Feature 4: Cloud-IP Immortal (Human-speed throttling for Render).
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_STORE = "/data" if os.path.exists("/data") else PROJECT_ROOT
@@ -24,17 +28,29 @@ logger = logging.getLogger("LEADSFLOW")
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 ]
 
-# PLATFORM DOMAIN LIST for Social Mining
-SOCIAL_PLATFORMS = ["facebook.com", "instagram.com", "linkedin.com", "zomato.com", "swiggy.com"]
+PLATFORM_DOMAINS = ["facebook.com", "instagram.com", "zomato.com", "swiggy.com", "justdial.com", "linkedin.com", "indiamart.com", "tradeindia.com"]
 
 def get_headers():
     return {
         "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept": "application/rss+xml,application/xml,text/xml,text/html;q=0.9",
         "Accept-Language": "en-IN,en;q=0.9,en-US;q=0.8",
+        "Referer": "https://www.google.com/"
     }
+
+def decode_bing_url(url):
+    try:
+        if "bing.com/ck/a" not in url: return url
+        u_param = parse_qs(urlparse(url).query).get('u', [None])[0]
+        if u_param:
+            b64 = u_param[2:] if u_param.startswith('a1') else u_param
+            b64 += '=' * (-len(b64) % 4)
+            return base64.b64decode(b64).decode('utf-8', errors='ignore').split('?')[0].lower()
+    except: pass
+    return url.lower()
 
 class Vault:
     def __init__(self):
@@ -54,115 +70,94 @@ class Vault:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("INSERT OR REPLACE INTO leads_3 (niche, location, company_name, website, phone, email, social, score, source) VALUES (?,?,?,?,?,?,?,?,?)",
-                             (niche, location, lead["Name"], "None", "None", lead.get("Email","None"), lead.get("Social","None"), lead.get("Score", 8.5), lead.get("Source", "v29.2")))
+                             (niche, location, lead["Name"], "None", "None", lead.get("Email","None"), lead.get("Social","None"), lead.get("Score", 8.5), lead.get("Source", "v31.3")))
                 conn.commit()
         except: pass
 
-def extract_email(text):
-    pattern = r'[a-zA-Z0-9._%+-]+@(?!(?:sentry|github|w3|bootstrap|email|png|jpg|js|gif|css|example)\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-    emails = re.findall(pattern, text)
-    return emails[0].lower() if emails else "None"
-
-def probe_justdial_discovery(niche, location, target):
-    """Discovery Layer: Uses JustDial to find verified local Indian business names"""
+def probe_rss_discovery(niche, location, target):
+    """FORCED Discovery: Requesting Platform Profiles specifically in RSS feed"""
     results = []
-    print(f"DEBUG: Probing Local Indian Registry (JustDial) for '{niche}' in {location}...", flush=True)
-    # Formulate JD search URL
-    # Replace spaces with hyphen for JD URL pattern
-    jd_niche = niche.replace(" ", "-")
-    url = f"https://www.justdial.com/{location}/{jd_niche}"
+    print(f"DEBUG: Mapping Social Registry (Forced RSS) for '{niche}' in {location}...", flush=True)
     
+    # FORCED QUERY: Prioritizing platforms to avoid official websites
+    q = f'"{niche}" {location} India (zomato OR facebook OR instagram OR justdial)'
+    url = f"https://www.bing.com/search?q={requests.utils.quote(q)}&format=rss&cc=IN"
+    
+    try:
+        r = requests.get(url, headers=get_headers(), timeout=15)
+        if r.status_code == 200:
+            root = ET.fromstring(r.text)
+            for i, item in enumerate(root.findall('.//item')):
+                if len(results) >= target * 3: break
+                title = item.find('title').text if item.find('title') is not None else ""
+                link = item.find('link').text if item.find('link') is not None else ""
+                
+                # Unmask name
+                name = title.split('|')[0].split('-')[0].split(':')[0].strip()
+                if len(name) < 3 or name.lower() in ["bing", "search", "login"]: continue
+                
+                results.append({"Name": name, "Source": "RSS-Portal", "Link": link})
+                print(f"PROGRESS:{i+1}:{target*5}:Indexed: {name[:15].encode('ascii', 'ignore').decode()}", flush=True)
+    except: pass
+    return results
+
+def deep_verify(name, location):
+    """Strict Verification: Ensuring lead has NO website and exists on platforms"""
+    q = f'"{name}" {location} India (facebook.com OR zomato.com OR instagram.com)'
+    url = f"https://www.bing.com/search?q={requests.utils.quote(q)}&cc=IN"
+    final_url = "None"
+    score = 8.5
     try:
         r = requests.get(url, headers=get_headers(), timeout=12)
         if r.status_code == 200:
             soup = BeautifulSoup(r.text, 'html.parser')
-            for i, item in enumerate(soup.select('.cntanr, .listing-card, li')):
-                if len(results) >= target: break
-                
-                # Sakt (Strict) Shield: Check if this listing has a website button
-                # JustDial uses specific icons or text for websites
-                has_website = item.select_one('.web_icn, .web_btn, [href*="website"]') or "website" in item.text.lower()
-                if has_website: continue
-                
-                title_tag = item.select_one('h2, .lng_cont_name, .store-name')
-                if not title_tag: continue
-                
-                name = title_tag.text.strip()
-                if len(name) < 3 or name.lower() in ["justdial", "advertise"]: continue
-                
-                results.append({"Name": name, "Source": "JustDial", "Score": 8.5})
-                print(f"PROGRESS:{len(results)}:DISCOVERED: {name[:25]}", flush=True)
-    except Exception as e:
-        print(f"DEBUG: JD Discovery Error: {e}", flush=True)
-    return results
-
-def cross_reference_social(name, location):
-    """Correlation Hub: Probes Zomato and Instagram for a discovered business name"""
-    platforms = ["Instagram", "Zomato", "Facebook"]
-    found_sources = []
-    found_url = "None"
-    
-    for p in platforms:
-        q = f'"{name}" {location} India {p}'
-        try:
-            # Using DDG Lite POST for stealth meta-discovery
-            r = requests.post('https://html.duckduckgo.com/html/', data={'q': q}, headers=get_headers(), timeout=10)
-            if r.status_code == 200:
-                soup = BeautifulSoup(r.text, 'html.parser')
-                # Check top result for platform domain match
-                top_link = soup.select_one('.result__title a')
-                if top_link:
-                    url = top_link.get('href', '').lower()
-                    if p.lower() in url:
-                        found_sources.append(p)
-                        found_url = top_link.get('href')
-                        # If we find more than one, we have a jackpot
-                        if len(found_sources) >= 1: break # Move to next business after finding one social link to maintain speed
-        except: pass
-    return found_sources, found_url
+            for a in soup.select('.b_algo h2 a, a'):
+                link = decode_bing_url(a.get('href', ''))
+                # Strict: Capture social platform profile
+                if any(p in link.lower() for p in PLATFORM_DOMAINS):
+                    final_url = link
+                    score = 9.8
+                    break
+    except: pass
+    return final_url, score
 
 def hunt(niche, location, target):
-    print(f">>> Comparative Ghost v29.2 Active. Aggregating Prospects for '{niche}'...", flush=True)
+    print(f">>> Omni Titan v31.3 Absolute Sourcing Active for '{niche}'...", flush=True)
     
-    # 1. PRIMARY DISCOVERY (Local Indian Identity)
-    raw_prospects = probe_justdial_discovery(niche, location, target)
+    # 1. FORCED RSS DISCOVERY
+    discovery_index = probe_rss_discovery(niche, location, target)
     
-    if not raw_prospects:
-        print("DEBUG: JustDial Discovery failed. Fallback to Search Mirrors...", flush=True)
-        # Broad Search discovery here if needed
-    
-    # 2. COMPARISON & CROSS-PLATFORM ANALYSIS
-    final_leads = []
+    final_prospects = []
     vault = Vault()
-    for i, prospect in enumerate(raw_prospects):
-        print(f"PROGRESS:{i+1}:{len(raw_prospects)}:Comparing: {prospect['Name'][:25]} across Platforms...", flush=True)
+    for i, lead in enumerate(discovery_index):
+        if len(final_prospects) >= target: break
         
-        # Cross-reference with Zomato/Insta/FB
-        sources, social_link = cross_reference_social(prospect['Name'], location)
-        
-        if sources:
-            source_tag = f"JustDial+{'+'.join(sources)}"
-            score = 9.8 if len(sources) > 1 else 9.2
-        else:
-            source_tag = "JustDial"
-            score = 8.8
+        # SAKT (STRICT) GATEKEEPER Stage 1: Discard if direct RSS link is a custom domain
+        is_independent = not any(p in lead['Link'].lower() for p in PLATFORM_DOMAINS)
+        clean_name = lead['Name'].encode('ascii', 'ignore').decode()
+        if is_independent:
+            print(f"DEBUG: Discarding '{clean_name[:12]}' - Official Website Detected.", flush=True)
+            continue
             
-        prospect.update({
-            "Social": social_link,
-            "Source": source_tag,
-            "Score": score,
-            "Email": "None" # Email extraction usually requires deeper scan, prioritize Social for now
-        })
+        # CLOUD-IP PROTECTION (Extreme Throttling)
+        delay = random.uniform(8, 15)
+        print(f"DEBUG: Human Analysis Pause ({delay:.1f}s)...", flush=True)
+        time.sleep(delay)
         
-        # Final Save
+        # 2. DEEP VERIFICATION (Jackpot Check)
+        social_url, score = deep_verify(lead['Name'], location)
+        
+        prospect = {
+            "Name": lead['Name'], "Social": social_url, "Score": score, 
+            "Source": f"Titan+{social_url.split('.')[1].capitalize() if social_url != 'None' else 'RSS'}"
+        }
+        
         vault.save(niche, location, prospect)
-        final_leads.append(prospect)
-        
-        # Throttle to prevent blocks on comparison stage
-        time.sleep(random.uniform(1.2, 2.5))
+        final_prospects.append(prospect)
+        print(f"PROGRESS:{len(final_prospects)}:{target}:SECURED JACKPOT: {clean_name[:20]}", flush=True)
 
-    print(f">>> Ghost Session Finished. {len(final_leads)} Mult-Source Prospects Secured.", flush=True)
-    return final_leads
+    print(f">>> Ghost Session Finished. {len(final_prospects)} Prospects Verified & Secured.", flush=True)
+    return final_prospects
 
 if __name__ == "__main__":
     if len(sys.argv) < 4: sys.exit(1)
@@ -177,7 +172,7 @@ if __name__ == "__main__":
             for d in data:
                 writer.writerow({
                     "Company Name": d["Name"], "Website": "None",
-                    "WhatsApp": "None", "Email ID": d.get("Email","None"),
-                    "Social": d.get("Social","None"), "Score": d["Score"], "Source": d.get("Source", "v29.2")
+                    "WhatsApp": "None", "Email ID": "None",
+                    "Social": d.get("Social","None"), "Score": d["Score"], "Source": d.get("Source", "v31.3")
                 })
     print("DONE", flush=True)

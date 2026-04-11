@@ -71,7 +71,7 @@ hunt_status = {"is_running": False, "progress": "Ready", "percent": 0, "last_res
 def run_hunt(ctx, user_id, niche, location, count):
     with ctx:
         try:
-            hunt_status.update({"is_running": True, "progress": "Launching Engine v29.2 (Comparative Ghost)...", "percent": 5, "last_result": None})
+            hunt_status.update({"is_running": True, "progress": "Launching Engine v31.3 (Omni Titan Total)...", "percent": 5, "last_result": None})
             print(f">>> STARTING HUNT: {niche} in {location}", flush=True)
             
             batch = Batch(user_id=user_id, niche=niche, location=location)
@@ -104,7 +104,7 @@ def run_hunt(ctx, user_id, niche, location, count):
 
             proc.wait(timeout=900)
             exit_code = proc.returncode
-            hunt_status.update({"progress": f"Comparative Analysis finished (exit={exit_code})", "percent": 100})
+            hunt_status.update({"progress": f"Analysis finished (exit={exit_code})", "percent": 100})
 
             if os.path.exists(csv_path):
                 import csv
@@ -118,11 +118,11 @@ def run_hunt(ctx, user_id, niche, location, count):
                             phone=row.get('WhatsApp', 'None'), 
                             email=row.get('Email ID', 'None'), 
                             social=row.get('Social', 'None'),
-                            source=row.get('Source', 'v29.2'),
+                            source=row.get('Source', 'v31.3'),
                             score=float(row.get('Score', 5.0))
                         ))
                     db.session.commit()
-                hunt_status["last_result"] = f"Success: Ghost analyzed cross-platform platform presence."
+                hunt_status["last_result"] = f"Success: Omni Titan Total successfully gathered forced platform prospects."
             else:
                 log_tail = " | ".join(full_log[-5:]) if full_log else "No output"
                 hunt_status["last_result"] = f"Failure: 0 leads. Log: {log_tail}"
