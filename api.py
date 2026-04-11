@@ -71,7 +71,7 @@ hunt_status = {"is_running": False, "progress": "Ready", "percent": 0, "last_res
 def run_hunt(ctx, user_id, niche, location, count):
     with ctx:
         try:
-            hunt_status.update({"is_running": True, "progress": "Launching Engine v22.1 (Anti-Block Mode)...", "percent": 5, "last_result": None})
+            hunt_status.update({"is_running": True, "progress": "Launching Engine v26.0 (Geographic Titan)...", "percent": 5, "last_result": None})
             print(f">>> STARTING HUNT: {niche} in {location}", flush=True)
             
             batch = Batch(user_id=user_id, niche=niche, location=location)
@@ -80,9 +80,7 @@ def run_hunt(ctx, user_id, niche, location, count):
 
             engine_path = os.path.join(ROOT, "engine.py")
             csv_path = os.path.join(ROOT, "leads.csv")
-            if os.path.exists(csv_path):
-                try: os.remove(csv_path)
-                except: pass
+            if os.path.exists(csv_path): os.remove(csv_path)
 
             proc = subprocess.Popen(
                 [sys.executable, engine_path, niche, location, str(count)],
@@ -96,7 +94,7 @@ def run_hunt(ctx, user_id, niche, location, count):
                 if line:
                     line = line.strip()
                     full_log.append(line)
-                    print(f"ENGINE LOG: {line}", flush=True)
+                    print(f"ENGINE: {line}", flush=True)
                     if line.startswith("PROGRESS:"):
                         parts = line.split(":")
                         if len(parts) >= 4:
@@ -110,7 +108,6 @@ def run_hunt(ctx, user_id, niche, location, count):
 
             if os.path.exists(csv_path):
                 import csv
-                leads_added = 0
                 with open(csv_path, 'r', encoding='utf-8', errors='replace') as f:
                     reader = csv.DictReader(f)
                     for row in reader:
@@ -121,15 +118,14 @@ def run_hunt(ctx, user_id, niche, location, count):
                             phone=row.get('WhatsApp', 'None'), 
                             email=row.get('Email ID', 'None'), 
                             social=row.get('Social', 'None'),
-                            source=row.get('Source', 'v22.1'),
+                            source=row.get('Source', 'v26.0'),
                             score=float(row.get('Score', 5.0))
                         ))
-                        leads_added += 1
                     db.session.commit()
-                hunt_status["last_result"] = f"Success: {leads_added} leads imported into vault."
+                hunt_status["last_result"] = f"Success: Titan secured the data."
             else:
-                log_tail = " | ".join(full_log[-5:]) if full_log else "No output from engine"
-                hunt_status["last_result"] = f"Failure: 0 leads. Log tail: {log_tail}"
+                log_tail = " | ".join(full_log[-5:]) if full_log else "No output"
+                hunt_status["last_result"] = f"Failure: 0 leads. Log: {log_tail}"
 
         except Exception as e:
             print(f">>> HUNT SYSTEM ERROR: {e}", flush=True)
