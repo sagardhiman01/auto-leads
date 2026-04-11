@@ -76,18 +76,22 @@ def probe_justdial_discovery(niche, location, target):
         r = requests.get(url, headers=get_headers(), timeout=12)
         if r.status_code == 200:
             soup = BeautifulSoup(r.text, 'html.parser')
-            # Extract names from h2 headings (verified works in local probe)
-            names = [h2.text.strip() for h2 in soup.find_all('h2') if len(h2.text.strip()) > 3]
-            # Secondary check: extract from title tags or specific JD classes if needed
-            if not names:
-                names = [span.text.strip() for span in soup.select('.lng_cont_name')]
-            
-            for i, name in enumerate(names):
+            for i, item in enumerate(soup.select('.cntanr, .listing-card, li')):
                 if len(results) >= target: break
-                # JD 'Website' check: In the desktop view, listings with websites have specific icons/links
-                # We prioritize names for now and cross-reference later
+                
+                # Sakt (Strict) Shield: Check if this listing has a website button
+                # JustDial uses specific icons or text for websites
+                has_website = item.select_one('.web_icn, .web_btn, [href*="website"]') or "website" in item.text.lower()
+                if has_website: continue
+                
+                title_tag = item.select_one('h2, .lng_cont_name, .store-name')
+                if not title_tag: continue
+                
+                name = title_tag.text.strip()
+                if len(name) < 3 or name.lower() in ["justdial", "advertise"]: continue
+                
                 results.append({"Name": name, "Source": "JustDial", "Score": 8.5})
-                print(f"PROGRESS:{i+1}:DISCOVERED: {name[:25]}", flush=True)
+                print(f"PROGRESS:{len(results)}:DISCOVERED: {name[:25]}", flush=True)
     except Exception as e:
         print(f"DEBUG: JD Discovery Error: {e}", flush=True)
     return results
