@@ -71,7 +71,7 @@ hunt_status = {"is_running": False, "progress": "Ready", "percent": 0, "last_res
 def run_hunt(ctx, user_id, niche, location, count):
     with ctx:
         try:
-            hunt_status.update({"is_running": True, "progress": "Launching Engine v34.0 (Precise Titan)...", "percent": 5, "last_result": None})
+            hunt_status.update({"is_running": True, "progress": "Launching Engine v35.0 (Scrub Titan)...", "percent": 5, "last_result": None})
             print(f">>> STARTING HUNT: {niche} in {location}", flush=True)
             
             batch = Batch(user_id=user_id, niche=niche, location=location)
@@ -118,11 +118,11 @@ def run_hunt(ctx, user_id, niche, location, count):
                             phone=row.get('WhatsApp', 'None'), 
                             email=row.get('Email ID', 'None'), 
                             social=row.get('Social', 'None'),
-                            source=row.get('Source', 'v34.0'),
+                            source=row.get('Source', 'v35.0'),
                             score=float(row.get('Score', 5.0))
                         ))
                     db.session.commit()
-                hunt_status["last_result"] = f"Success: Precise Titan successfully synchronized genuine B2B prospects."
+                hunt_status["last_result"] = f"Success: Scrub Titan successfully Purified and synchronized leads."
             else:
                 log_tail = " | ".join(full_log[-5:]) if full_log else "No output"
                 hunt_status["last_result"] = f"Failure: 0 leads. Log: {log_tail}"
