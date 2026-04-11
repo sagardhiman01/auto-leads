@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeadsFlow Pro 3.0 | Hunter Engine</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --accent: #10b981;
+            --bg: #030712;
+            --glass: rgba(255, 255, 255, 0.05);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: var(--bg);
+            color: #f3f4f6;
+            font-family: 'Outfit', sans-serif;
+            min-height: 100vh;
+            background-image: radial-gradient(circle at 50% 50%, #1e1b4b 0%, #030712 100%);
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+            padding: 1.5rem;
+            background: var(--glass);
+            backdrop-filter: blur(12px);
+            border-radius: 20px;
+            border: 1px border var(--border);
+        }
+
+        .logo { font-size: 1.8rem; font-weight: 800; background: linear-gradient(to right, #60a5fa, #34d399); -webkit-background-clip: text; color: transparent; }
+
+        .search-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) 180px;
+            gap: 1.5rem;
+            background: var(--glass);
+            padding: 2rem;
+            border-radius: 24px;
+            border: 1px solid var(--border);
+            margin-bottom: 3rem;
+        }
+
+        input {
+            width: 100%;
+            padding: 1rem 1.5rem;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: white;
+            font-size: 1rem;
+            transition: 0.3s;
+        }
+        input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
+
+        button {
+            padding: 1rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        button:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(59, 130, 246, 0.5); }
+
+        .status-panel {
+            background: #000;
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid var(--border);
+            display: none;
+        }
+        .status-header { display: flex; justify-content: space-between; margin-bottom: 1rem; font-size: 0.9rem; color: #9ca3af; }
+        .log-display { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--accent); white-space: pre-wrap; height: 60px; overflow: hidden; }
+
+        .batch-card {
+            background: var(--glass);
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 1px solid var(--border);
+        }
+        .batch-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 1rem; }
+        .batch-info h3 { font-size: 1.4rem; text-transform: capitalize; margin-bottom: 0.5rem; }
+        .batch-info p { color: #9ca3af; font-size: 0.9rem; }
+
+        .lead-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        .lead-table th { text-align: left; color: #6b7280; font-size: 0.8rem; text-transform: uppercase; padding: 1rem; }
+        .lead-table td { padding: 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .score-badge { padding: 0.3rem 0.8rem; border-radius: 20px; background: rgba(52, 211, 153, 0.1); color: var(--accent); font-weight: 600; font-size: 0.85rem; }
+        
+        .golden-lead {
+            border-left: 4px solid #fbbf24 !important;
+            background: rgba(251, 191, 36, 0.03) !important;
+            box-shadow: inset 0 0 20px rgba(251, 191, 36, 0.05);
+        }
+        .golden-tag {
+            font-size: 0.65rem;
+            color: #fbbf24;
+            text-transform: uppercase;
+            font-weight: 800;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .btn-logout { background: transparent; border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; }
+        .btn-logout:hover { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; box-shadow: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">LeadsFlow Pro 3.0</div>
+            <button class="btn-logout" onclick="logout()">Logout</button>
+        </header>
+
+        <div class="search-grid">
+            <input type="text" id="niche" placeholder="Niche (e.g. Roofers)">
+            <input type="text" id="location" placeholder="Location (e.g. Mumbai or India)">
+            <input type="number" id="count" placeholder="Limit" value="10">
+            <button onclick="startHunt()">Hunt Leads</button>
+        </div>
+
+        <div id="statusPanel" class="status-panel">
+            <div class="status-header">
+                <span>HUNTER ENGINE STATUS</span>
+                <span id="huntProgressText">0%</span>
+            </div>
+            <!-- Progress Bar -->
+            <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; margin-bottom: 1rem; overflow: hidden;">
+                <div id="progressBar" style="width: 0%; height: 100%; background: var(--primary); transition: 0.5s ease; box-shadow: 0 0 10px var(--primary);"></div>
+            </div>
+            <div id="logDisplay" class="log-display">Waiting for engine response...</div>
+        </div>
+
+        <div id="batchesContainer"></div>
+    </div>
+
+    <script>
+        async function logout() {
+            await fetch('/logout');
+            window.location.href = '/login';
+        }
+
+        async function startHunt() {
+            const niche = document.getElementById('niche').value;
+            const location = document.getElementById('location').value;
+            const count = document.getElementById('count').value;
+
+            if(!niche || !location) return alert("Please fill parameters");
+
+            // Reset UI
+            document.getElementById('huntProgressText').innerText = "0%";
+            document.getElementById('progressBar').style.width = "0%";
+            document.getElementById('statusPanel').style.display = 'block';
+
+            await fetch('/hunt', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({niche, location, count})
+            });
+
+            pollStatus();
+        }
+
+        async function pollStatus() {
+            const res = await fetch('/status');
+            const status = await res.json();
+            
+            const pct = status.percent || 0;
+            document.getElementById('huntProgressText').innerText = `${pct}%`;
+            document.getElementById('progressBar').style.width = `${pct}%`;
+            document.getElementById('logDisplay').innerText = `> ${status.progress}`;
+            
+            if(status.is_running) {
+                setTimeout(pollStatus, 1500);
+            } else {
+                if(status.last_result) alert(status.last_result);
+                loadData();
+            }
+        }
+
+        async function loadData() {
+            const res = await fetch('/data');
+            const data = await res.json();
+            
+            const container = document.getElementById('batchesContainer');
+            container.innerHTML = data.map(batch => `
+                <div class="batch-card">
+                    <div class="batch-header">
+                        <div class="batch-info">
+                            <h3>${batch.niche} in ${batch.location}</h3>
+                            <p>${batch.timestamp} • ${batch.leads.length} leads secured</p>
+                        </div>
+                        <a href="/export/csv" style="color:var(--primary); text-decoration:none; font-size:0.9rem">Download CSV</a>
+                    </div>
+                    <table class="lead-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Contact</th>
+                                <th>Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${batch.leads.map(l => {
+                                const hasEmail = l.Email && l.Email !== 'None';
+                                const hasWA = l.Phone && l.Phone.startsWith('W:');
+                                const isGolden = l.Score >= 9.0;
+                                return `
+                                    <tr class="${isGolden ? 'golden-lead' : ''}">
+                                        <td style="max-width: 300px;">
+                                            ${isGolden ? '<span class="golden-tag">Golden Lead (SMB)</span>' : ''}
+                                            <div style="font-weight:600">${l.Name}</div>
+                                            <div style="display:flex; gap:8px; align-items:center; margin-top:4px;">
+                                                <a href="${l.Website}" target="_blank" style="font-size: 0.7rem; padding: 2px 6px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; text-decoration: none; border-radius: 4px;">Audit Web</a>
+                                                <span style="font-size: 0.8rem; color:#6b7280">${l.Website}</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div style="font-size: 0.85rem; ${hasEmail ? 'color: var(--primary)' : 'color: #6b7280'}">
+                                                ${hasEmail ? l.Email : 'No Email'}
+                                            </div>
+                                            <div style="font-size: 0.85rem; margin-top:4px; ${hasWA ? 'color: var(--accent)' : 'color: #6b7280'}">
+                                                ${hasWA ? l.Phone.replace('W:','') : 'No WA'}
+                                            </div>
+                                        </td>
+                                        <td><span class="score-badge">${l.Score}</span></td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `).join('');
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
