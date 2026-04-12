@@ -71,14 +71,7 @@ hunt_status = {"is_running": False, "progress": "Ready", "percent": 0, "last_res
 def run_hunt(ctx, user_id, niche, location, count):
     with ctx:
         try:
-            # CLEAN SLATE: Remove old leads for this niche and location if a new search starts
-            from models import Lead, Batch
-            old_batch = Batch.query.filter_by(user_id=user_id, niche=niche, location=location).first()
-            if old_batch:
-                Lead.query.filter_by(batch_id=old_batch.id).delete()
-                db.session.commit()
-
-            hunt_status.update({"is_running": True, "progress": "Launching Engine v37.1 (Omniscient Master)...", "percent": 5, "last_result": None})
+            hunt_status.update({"is_running": True, "progress": "Launching Engine v38.0 (Absolute Titan)...", "percent": 5, "last_result": None})
             print(f">>> STARTING HUNT: {niche} in {location}", flush=True)
             
             batch = Batch(user_id=user_id, niche=niche, location=location)
@@ -132,15 +125,15 @@ def run_hunt(ctx, user_id, niche, location, count):
                             phone=row.get('WhatsApp', 'None'), 
                             email=row.get('Email ID', 'None'), 
                             social=row.get('Social', 'None'),
-                            source=row.get('Source', 'v37.1'),
+                            source=row.get('Source', 'v38.0'),
                             score=float(row.get('Score', 8.5))
                         ))
                     db.session.commit()
-                hunt_status["last_result"] = f"Success: Omniscient Master Analyzed prospects. Version 37.1 Active."
+                hunt_status["last_result"] = f"Success: Absolute Titan v38.0 secured genuine B2B prospects."
             else:
                 log_tail = " | ".join(full_log[-3:]) if full_log else "No Stdout"
                 err_tail = " | ".join(err_log[-2:]) if err_log else "No Stderr"
-                hunt_status["last_result"] = f"Failure: 0 leads secured. Multi-Surface discovery may be throttled."
+                hunt_status["last_result"] = f"Failure: 0 leads. OUT: {log_tail} | ERR: {err_tail}"
 
         except Exception as e:
             print(f">>> HUNT SYSTEM ERROR: {e}", flush=True)
