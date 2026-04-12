@@ -151,59 +151,70 @@ def discover_overpass(niche, location, target):
         except: pass
     
     if not bbox:
-        bbox = (28.40, 76.80, 28.90, 77.40)  # Delhi default
+        bbox = (28.40, 76.80, 28.90, 77.40)
     
     tag_key = list(osm_tags.keys())[0]
     tag_val = list(osm_tags.values())[0]
     limit = max(target * 4, 40)
     
+    # Build DUAL queries: Tag-based + Name-based regex
+    niche_words = niche.replace(' ', '|')
     query = f"""[out:json][timeout:30];
 (
   node["{tag_key}"="{tag_val}"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});
   way["{tag_key}"="{tag_val}"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});
+  node["name"~"{niche_words}",i]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});
+  way["name"~"{niche_words}",i]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});
 );
 out body {limit};
 """
+    
+    # Multiple Overpass endpoints for resilience
+    endpoints = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    ]
+    
     results = []
-    try:
-        r = requests.post("https://overpass-api.de/api/interpreter", data={"data": query}, timeout=35)
-        if r.status_code == 200:
-            elements = r.json().get('elements', [])
-            safe_print(f"DEBUG: Overpass returned {len(elements)} POIs")
-            
-            # Sort: businesses WITH contacts first
-            has_contact = []
-            no_contact = []
-            for e in elements:
-                tags = e.get('tags', {})
-                name = tags.get('name', tags.get('name:en', ''))
-                if not name or is_junk(name): continue
+    for ep in endpoints:
+        try:
+            r = requests.post(ep, data={"data": query}, timeout=35)
+            if r.status_code == 200:
+                elements = r.json().get('elements', [])
+                safe_print(f"DEBUG: Overpass returned {len(elements)} POIs")
                 
-                phone = tags.get('phone', tags.get('contact:phone', 'None'))
-                website = tags.get('website', tags.get('contact:website', 'None'))
-                email = tags.get('email', tags.get('contact:email', 'None'))
-                facebook = tags.get('contact:facebook', 'None')
+                has_contact = []
+                no_contact = []
+                for e in elements:
+                    tags = e.get('tags', {})
+                    name = tags.get('name', tags.get('name:en', ''))
+                    if not name or is_junk(name): continue
+                    
+                    phone = tags.get('phone', tags.get('contact:phone', 'None'))
+                    website = tags.get('website', tags.get('contact:website', 'None'))
+                    email = tags.get('email', tags.get('contact:email', 'None'))
+                    facebook = tags.get('contact:facebook', 'None')
+                    
+                    from urllib.parse import quote
+                    maps_link = f"https://www.google.com/maps/search/{quote(name + ' ' + location)}"
+                    social = facebook if facebook != 'None' else maps_link
+                    
+                    lead = {"Name": name, "Phone": phone, "Website": website,
+                            "Email": email, "Social": social, "Score": 9.8}
+                    
+                    if phone != 'None' or email != 'None' or website != 'None':
+                        has_contact.append(lead)
+                    else:
+                        no_contact.append(lead)
                 
-                # Auto-generate Google Maps link for easy contact lookup
-                from urllib.parse import quote
-                maps_link = f"https://www.google.com/maps/search/{quote(name + ' ' + location)}"
-                
-                # Use facebook/maps as social link
-                social = facebook if facebook != 'None' else maps_link
-                
-                lead = {"Name": name, "Phone": phone, "Website": website,
-                        "Email": email, "Social": social, "Score": 9.8}
-                
-                if phone != 'None' or email != 'None' or website != 'None':
-                    has_contact.append(lead)
-                else:
-                    no_contact.append(lead)
-            
-            results = has_contact + no_contact
-        else:
-            safe_print(f"DEBUG: Overpass status {r.status_code}")
-    except Exception as e:
-        safe_print(f"DEBUG: Overpass error: {str(e)[:60]}")
+                results = has_contact + no_contact
+                break
+            else:
+                safe_print(f"DEBUG: Overpass {ep} returned {r.status_code}, trying next...")
+        except Exception as e:
+            safe_print(f"DEBUG: Overpass {ep} error: {str(e)[:40]}")
+        time.sleep(2)
     
     return results
 
