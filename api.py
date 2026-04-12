@@ -71,7 +71,7 @@ hunt_status = {"is_running": False, "progress": "Ready", "percent": 0, "last_res
 def run_hunt(ctx, user_id, niche, location, count):
     with ctx:
         try:
-            hunt_status.update({"is_running": True, "progress": "Launching Engine v39.0 (Immortal Titan)...", "percent": 5, "last_result": None})
+            hunt_status.update({"is_running": True, "progress": "Launching Engine v39.1 (Immortal Titan Enriched)...", "percent": 5, "last_result": None})
             print(f">>> STARTING HUNT: {niche} in {location}", flush=True)
             
             batch = Batch(user_id=user_id, niche=niche, location=location)
@@ -125,7 +125,7 @@ def run_hunt(ctx, user_id, niche, location, count):
                             phone=row.get('WhatsApp', 'None'), 
                             email=row.get('Email ID', 'None'), 
                             social=row.get('Social', 'None'),
-                            source=row.get('Source', 'v39.0'),
+                            source=row.get('Source', 'v39.1'),
                             score=float(row.get('Score', 8.5))
                         ))
                     db.session.commit()
