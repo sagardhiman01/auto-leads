@@ -184,8 +184,15 @@ out body {limit};
                 email = tags.get('email', tags.get('contact:email', 'None'))
                 facebook = tags.get('contact:facebook', 'None')
                 
+                # Auto-generate Google Maps link for easy contact lookup
+                from urllib.parse import quote
+                maps_link = f"https://www.google.com/maps/search/{quote(name + ' ' + location)}"
+                
+                # Use facebook/maps as social link
+                social = facebook if facebook != 'None' else maps_link
+                
                 lead = {"Name": name, "Phone": phone, "Website": website,
-                        "Email": email, "Social": facebook, "Score": 9.8}
+                        "Email": email, "Social": social, "Score": 9.8}
                 
                 if phone != 'None' or email != 'None' or website != 'None':
                     has_contact.append(lead)
