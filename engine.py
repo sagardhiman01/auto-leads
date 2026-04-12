@@ -8,14 +8,12 @@ from bs4 import BeautifulSoup
 import random
 import csv
 import time
-import base64
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import quote
 
-# Engine v36.0: THE LOGGING TITAN (DEEP DEBUG EDITION)
-# Feature 1: Crash Protection (Global try-except to capture stderr).
-# Feature 2: Native Script Lockdown (हिंदी, বাংলা etc block).
-# Feature 3: Precision Discovery (.jcn a selective targeting).
-# Feature 4: Cloud IP Immortality (8-15s throttles).
+# Engine v37.1: THE OMNISCIENT MASTER (SURFACE-DISCOVERY EDITION)
+# Strategy: Multi-Surface Rotation (Registry -> Social Index -> Portal Hubs).
+# Goal: 100% discovery rate even on throttled cloud IPs.
+# Quality: Absolute Native-Script & Garbage Rejection (Regex).
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_STORE = "/data" if os.path.exists("/data") else PROJECT_ROOT
@@ -31,20 +29,17 @@ USER_AGENTS = [
 
 PLATFORM_DOMAINS = ["facebook.com", "instagram.com", "zomato.com", "swiggy.com", "justdial.com", "linkedin.com", "indiamart.com", "magicbricks.com", "99acres.com"]
 
-BLACKLIST_RAW = [
-    "hindi", "marathi", "punjabi", "tamil", "telugu", "bengali", "urdu", "english", "gujarati", "kannada", "malayalam", "assamese", "odia",
-    "हिंदी", "मराठी", "বাংলা", "ਪੰਜਾਬੀ", "اردو", "தமிழ்", "తెలుగు", "ગુજરાતી", "ಕನ್ನಡ", "മലയാളം", "অসমীয়া", "ଓଡ଼ିଆ",
-    "home", "about", "contact", "privacy", "terms", "login", "signup", "career", "advertise", "feedback", "help", "listing"
-]
+# OMNI-BLACKLIST: Regex for languages and native scripts (Odia, Hindi, etc.)
+GARBAGE_PATTERN = re.compile(r"(hindi|marathi|punjabi|tamil|telugu|bengali|urdu|english|gujarati|kannada|malayalam|assamese|odia|हिंदी|मराठी|বাংলা|ਪੰਜਾਬੀ|اردو|தமிழ்|తెలుగు|ગુજરાતી|ಕನ್ನಡ|മലയാളം|অসমীয়া|ଓଡ଼ିଆ|about|contact|privacy|terms|login|signup|career|advertise|feedback|help|listing|result|bing|search|profile)", re.IGNORECASE)
 
-def clean_name(text):
+def clean_log(text):
     if not text: return ""
     return text.encode('ascii', 'ignore').decode('ascii').strip()
 
-def is_garbage_name(text):
-    t = text.lower().strip()
+def is_garbage(text):
+    t = text.strip()
     if len(t) < 3: return True
-    if any(x == t for x in BLACKLIST_RAW): return True
+    if GARBAGE_PATTERN.search(t): return True
     return False
 
 class Vault:
@@ -65,62 +60,56 @@ class Vault:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("INSERT OR REPLACE INTO leads_3 (niche, location, company_name, website, phone, email, social, score, source) VALUES (?,?,?,?,?,?,?,?,?)",
-                             (niche, location, lead["Name"], "None", "None", lead.get("Email","None"), lead.get("Social","None"), lead.get("Score", 8.5), lead.get("Source", "v36.0")))
+                             (niche, location, lead["Name"], "None", "None", lead.get("Email","None"), lead.get("Social","None"), lead.get("Score", 8.5), lead.get("Source", "v37.1")))
                 conn.commit()
         except: pass
 
-def probe_registry_scrubbed(niche, location, target):
+def probe_mirror(niche, location, target, surface="registry"):
     results = []
-    print(f"DEBUG: Tapping Registry Scrub Hub for '{niche}' in {location}...", flush=True)
-    city = location.lower().replace(' ', '-')
-    service = niche.lower().replace(' ', '-')
-    url = f"https://www.justdial.com/{city}/{service}/"
+    print(f"DEBUG: Tapping {surface.upper()} Surface for '{niche}' in {location}...", flush=True)
     
-    try:
-        r = requests.get(url, headers={
-            "User-Agent": random.choice(USER_AGENTS),
-            "Accept-Language": "en-IN,en;q=0.9,en-US;q=0.8"
-        }, timeout=15)
-        if r.status_code == 200:
-            soup = BeautifulSoup(r.text, 'html.parser')
-            for card in soup.select('li.cntanr'):
-                if len(results) >= target + 5: break
-                name_tag = card.select_one('.jcn a')
-                if not name_tag: continue
-                name = name_tag.text.strip()
-                if is_garbage_name(name): continue
-                web_btn = card.select_one('span.web_icw, a[href*="http"]')
-                if web_btn: continue
-                results.append({"Name": name, "Link": "None", "Source": "Registry"})
-                print(f"PROGRESS:{len(results)}:{(target+5)}:REGISTRY: {clean_name(name)[:18]}", flush=True)
-        time.sleep(random.uniform(5, 8))
-    except Exception as e:
-        print(f"DEBUG: Registry Mirror Error: {str(e)}", flush=True)
+    headers = {"User-Agent": random.choice(USER_AGENTS), "Accept-Language": "en-IN,en;q=0.9"}
     
-    if not results:
-        print("DEBUG: Registry Throttled. Switching to Social Lockdown...", flush=True)
-        q = f'"{niche}" {location} India (site:facebook.com OR site:zomato.com)'
-        url = f"https://www.bing.com/search?q={requests.utils.quote(q)}&cc=IN"
+    if surface == "registry":
+        city = location.lower().replace(' ', '-')
+        service = niche.lower().replace(' ', '-')
+        url = f"https://www.justdial.com/{city}/{service}/"
         try:
-            r = requests.get(url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=12)
+            r = requests.get(url, headers=headers, timeout=15)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, 'html.parser')
+                for card in soup.select('li.cntanr'):
+                    name_tag = card.select_one('.jcn a')
+                    if not name_tag: continue
+                    name = name_tag.text.strip()
+                    if is_garbage(name): continue
+                    if card.select_one('span.web_icw, a[href*="http"]'): continue # No Website Check
+                    results.append({"Name": name, "Source": "Registry"})
+                    print(f"PROGRESS Discovery: {clean_log(name)[:18]}", flush=True)
+        except: pass
+
+    elif surface == "social":
+        q = f'site:facebook.com "{niche}" {location} India'
+        url = f"https://www.bing.com/search?q={quote(q)}&cc=IN"
+        try:
+            r = requests.get(url, headers=headers, timeout=12)
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, 'html.parser')
                 for a in soup.select('.b_algo h2 a, a'):
-                    if len(results) >= target: break
                     link = a.get('href', '').lower()
-                    if any(p in link for p in PLATFORM_DOMAINS):
+                    if "facebook.com" in link:
                         name = a.text.split('|')[0].split('-')[0].strip()
-                        if not is_garbage_name(name):
-                             results.append({"Name": name, "Link": link, "Source": "Social-Index"})
-                             print(f"PROGRESS:{len(results)}:{target}:SOCIAL: {clean_name(name)[:18]}", flush=True)
-        except Exception as e:
-            print(f"DEBUG: Social Mirror Error: {str(e)}", flush=True)
+                        if not is_garbage(name):
+                             results.append({"Name": name, "Social": link, "Source": "Facebook"})
+                             print(f"PROGRESS Discovery (FB): {clean_log(name)[:18]}", flush=True)
+        except: pass
+
     return results
 
-def verify_social(name, location):
-    q = f'"{name}" {location} India social profile'
-    url = f"https://www.bing.com/search?q={requests.utils.quote(q)}&cc=IN"
-    final_url = "None"
+def verify_and_score(name, location):
+    q = f'"{name}" {location} India platform presence'
+    url = f"https://www.bing.com/search?q={quote(q)}&cc=IN"
+    social_url = "None"
     score = 8.5
     try:
         r = requests.get(url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=10)
@@ -129,55 +118,70 @@ def verify_social(name, location):
             for a in soup.select('.b_algo h2 a, a'):
                 link = a.get('href', '').lower()
                 if any(p in link for p in PLATFORM_DOMAINS):
-                    final_url = link
+                    social_url = link
                     score = 9.8
                     break
     except: pass
-    return final_url, score
+    return social_url, score
 
 def hunt(niche, location, target):
     try:
         if "state" in niche.lower() and "real" in niche.lower(): niche = "Real Estate"
-        print(f">>> Logging Titan v36.0 Active. Scrubbing {location}...", flush=True)
+        print(f">>> Omniscient Master v37.1 Active. Indexing {location}...", flush=True)
         
-        bank = probe_registry_scrubbed(niche, location, target)
-        final_prospects = []
+        final_leads = []
         vault = Vault()
-        for i, lead in enumerate(bank):
-            if len(final_prospects) >= target: break
+        
+        # Phase 1: Registry Discovery
+        raw_bank = probe_mirror(niche, location, target, "registry")
+        
+        # Phase 2: Social Discovery Fallback (if Registry is low)
+        if len(raw_bank) < target:
+            social_bank = probe_mirror(niche, location, target, "social")
+            raw_bank.extend(social_bank)
+
+        for lead in raw_bank:
+            if len(final_leads) >= target: break
+            
+            # Cloud IPM Protection
             delay = random.uniform(8, 15)
-            print(f"DEBUG: Human-Speed Scrub Pause ({delay:.1f}s)...", flush=True)
+            print(f"DEBUG: Analyzing {clean_log(lead['Name'])[:15]} ({delay:.1f}s)...", flush=True)
             time.sleep(delay)
-            social_link, score = verify_social(lead['Name'], location)
-            if is_garbage_name(lead['Name']): continue
+            
+            social_link = lead.get("Social", "None")
+            score = 9.8 if social_link != "None" else 8.5
+            
+            if social_link == "None":
+                social_link, score = verify_and_score(lead['Name'], location)
+            
+            # Sakt Quality Gate
+            if is_garbage(lead['Name']): continue
+            
             final_lead = {"Name": lead['Name'], "Social": social_link, "Score": score}
             vault.save(niche, location, final_lead)
-            final_prospects.append(final_lead)
-            print(f"PROGRESS:{len(final_prospects)}:{target}:SECURED GOLD: {clean_name(lead['Name'])[:20]}", flush=True)
+            final_leads.append(final_lead)
+            print(f"PROGRESS:{len(final_leads)}:{target}:SECURED PLATINUM: {clean_log(lead['Name'])[:20]}", flush=True)
 
-        print(f">>> Titan Session Finished. {len(final_prospects)} clean prospects secured.", flush=True)
-        return final_prospects
+        print(f">>> Titan Session Finished. {len(final_leads)} prospects secured.", flush=True)
+        return final_leads
     except Exception as e:
-        print(f"FATAL_ENGINE_ERROR: {str(e)}", flush=True)
+        print(f"FATAL_CRASH: {str(e)}", flush=True)
         return []
 
 if __name__ == "__main__":
-    try:
-        if len(sys.argv) < 4: sys.exit(1)
-        n, l, c = sys.argv[1], sys.argv[2], int(sys.argv[3])
-        data = hunt(n, l, c)
-        if data:
-            csv_path = os.path.join(PROJECT_ROOT, "leads.csv")
-            with open(csv_path, 'w', newline='', encoding='utf-8') as f:
-                fields = ["Company Name", "Website", "WhatsApp", "Email ID", "Social", "Score", "Source"]
-                writer = csv.DictWriter(f, fieldnames=fields)
-                writer.writeheader()
-                for d in data:
-                    writer.writerow({
-                        "Company Name": d["Name"], "Website": "None",
-                        "WhatsApp": "None", "Email ID": "None",
-                        "Social": d.get("Social","None"), "Score": d.get("Score", 8.5), "Source": "v36.0"
-                    })
-        print("DONE", flush=True)
-    except Exception as e:
-        print(f"CRITICAL_STARTUP_ERROR: {str(e)}", flush=True)
+    if len(sys.argv) < 4: sys.exit(1)
+    n, l, c = sys.argv[1], sys.argv[2], int(sys.argv[3])
+    data = hunt(n, l, c)
+    if data:
+        csv_path = os.path.join(PROJECT_ROOT, "leads.csv")
+        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            fields = ["Company Name", "Website", "WhatsApp", "Email ID", "Social", "Score", "Source"]
+            writer = csv.DictWriter(f, fieldnames=fields)
+            writer.writeheader()
+            for d in data:
+                writer.writerow({
+                    "Company Name": d["Name"], "Website": "None",
+                    "WhatsApp": "None", "Email ID": "None",
+                    "Social": d.get("Social","None"), "Score": d["Score"], "Source": "v37.1"
+                })
+    print("DONE", flush=True)
