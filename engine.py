@@ -2,62 +2,125 @@ import sqlite3
 import os
 import sys
 import re
+import requests
 import random
 import csv
 import time
+import json
 
-# Engine v38.1: THE ABSOLUTE TITAN (FIXED FILTER)
-# ROOT CAUSE: v38.0 found 10 results on Render but filter rejected ALL of them
-# because they were business websites (not platform listings).
-# FIX: Accept ALL search results as leads. Score platform ones higher.
-# The user wants LEADS to contact - not just platform-only businesses.
+# Engine v39.0: THE IMMORTAL TITAN (OVERPASS + DDGS HYBRID)
+# ROOT CAUSE: ALL search engines (Bing, Google, DDG, DDGS lib) block Render cloud IPs.
+# SOLUTION: Use OpenStreetMap Overpass API as PRIMARY discovery.
+#   - Free, no auth, no captcha, works from ANY IP worldwide.
+#   - Returns REAL business data (names, phones, addresses) from OpenStreetMap.
+#   - DDGS as fallback for local machines where it works.
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_STORE = "/data" if os.path.exists("/data") else PROJECT_ROOT
 DB_PRODUCTION_PATH = os.path.join(DATA_STORE, "leads_production_v3.db")
 
-PLATFORM_DOMAINS = ["facebook.com", "instagram.com", "zomato.com", "swiggy.com", 
-                     "justdial.com", "linkedin.com", "indiamart.com", "magicbricks.com", "99acres.com"]
+# Map user niches to OpenStreetMap tags
+NICHE_MAP = {
+    "restaurant": {"amenity": "restaurant"},
+    "cafe": {"amenity": "cafe"},
+    "hotel": {"tourism": "hotel"},
+    "gym": {"leisure": "fitness_centre"},
+    "salon": {"shop": "beauty"},
+    "bakery": {"shop": "bakery"},
+    "pharmacy": {"amenity": "pharmacy"},
+    "hospital": {"amenity": "hospital"},
+    "school": {"amenity": "school"},
+    "clinic": {"amenity": "clinic"},
+    "dentist": {"amenity": "dentist"},
+    "real estate": {"office": "estate_agent"},
+    "lawyer": {"office": "lawyer"},
+    "insurance": {"office": "insurance"},
+    "travel": {"office": "travel_agent"},
+    "jewellery": {"shop": "jewelry"},
+    "jewelry": {"shop": "jewelry"},
+    "clothing": {"shop": "clothes"},
+    "electronics": {"shop": "electronics"},
+    "supermarket": {"shop": "supermarket"},
+    "car repair": {"shop": "car_repair"},
+    "automobile": {"shop": "car"},
+    "furniture": {"shop": "furniture"},
+    "hardware": {"shop": "hardware"},
+    "mobile": {"shop": "mobile_phone"},
+    "grocery": {"shop": "convenience"},
+    "florist": {"shop": "florist"},
+    "pet": {"shop": "pet"},
+    "laundry": {"shop": "laundry"},
+    "tailor": {"shop": "tailor"},
+}
 
-# Regex to block languages and junk navigation
+# Indian city coordinates (lat_min, lon_min, lat_max, lon_max)
+CITY_BBOX = {
+    "delhi": (28.40, 76.80, 28.90, 77.40),
+    "new delhi": (28.40, 76.80, 28.90, 77.40),
+    "mumbai": (18.85, 72.75, 19.30, 73.05),
+    "bangalore": (12.85, 77.45, 13.10, 77.75),
+    "bengaluru": (12.85, 77.45, 13.10, 77.75),
+    "chennai": (12.90, 80.10, 13.20, 80.35),
+    "kolkata": (22.45, 88.25, 22.65, 88.45),
+    "hyderabad": (17.30, 78.35, 17.55, 78.60),
+    "pune": (18.45, 73.75, 18.65, 73.95),
+    "jaipur": (26.80, 75.70, 27.00, 75.90),
+    "ahmedabad": (22.95, 72.50, 23.15, 72.70),
+    "lucknow": (26.75, 80.85, 26.95, 81.05),
+    "chandigarh": (30.65, 76.70, 30.80, 76.85),
+    "roorkee": (29.82, 77.85, 29.92, 77.92),
+    "dehradun": (30.25, 77.95, 30.40, 78.15),
+    "noida": (28.50, 77.30, 28.65, 77.45),
+    "gurgaon": (28.40, 76.95, 28.55, 77.10),
+    "gurugram": (28.40, 76.95, 28.55, 77.10),
+    "indore": (22.65, 75.80, 22.80, 75.95),
+    "bhopal": (23.20, 77.35, 23.35, 77.50),
+    "nagpur": (21.10, 79.00, 21.20, 79.15),
+    "surat": (21.15, 72.75, 21.25, 72.90),
+    "vadodara": (22.25, 73.15, 22.35, 73.25),
+    "patna": (25.55, 85.05, 25.70, 85.25),
+    "kochi": (9.90, 76.20, 10.05, 76.35),
+    "coimbatore": (10.95, 76.90, 11.05, 77.05),
+    "visakhapatnam": (17.65, 83.20, 17.80, 83.35),
+    "agra": (27.10, 77.95, 27.25, 78.10),
+    "varanasi": (25.26, 82.95, 25.38, 83.05),
+    "amritsar": (31.58, 74.80, 31.70, 74.92),
+}
+
+# Default bbox for India (broad)
+DEFAULT_BBOX = (8.0, 68.0, 37.0, 97.0)
+
 GARBAGE_RE = re.compile(
     r"^(hindi|marathi|punjabi|tamil|telugu|bengali|urdu|english|gujarati|kannada|malayalam|"
     r"assamese|odia|हिंदी|मराठी|বাংলা|ਪੰਜਾਬੀ|اردو|தமிழ்|తెలుగు|ગુજરાતી|ಕನ್ನಡ|"
     r"മലയാളം|অসমীয়া|ଓଡ଼ିଆ)$", re.IGNORECASE)
 
-# Sites that are NOT businesses (news, wikipedia, etc.)
-SKIP_DOMAINS = ["youtube.com", "wikipedia.org", "news18.com", "indianexpress.com",
-                "timesofindia.com", "ndtv.com", "google.com", "bing.com", 
-                "economictimes.com", "businesstoday.in", "moneycontrol.com",
-                "hindustantimes.com", "thehindu.com", "mynation.com", "thepatriot.in"]
-
 def safe_print(msg):
-    try:
-        print(msg, flush=True)
-    except:
-        print(msg.encode('ascii', 'ignore').decode(), flush=True)
+    try: print(msg, flush=True)
+    except: print(msg.encode('ascii', 'ignore').decode(), flush=True)
 
-def is_junk_name(name):
+def is_junk(name):
     n = name.strip()
-    if len(n) < 4: return True
+    if len(n) < 3: return True
     if GARBAGE_RE.match(n): return True
-    nl = n.lower()
-    if any(j in nl for j in ["login", "signup", "privacy", "terms", "career", 
-                              "cookie", "password", "captcha", "advertise"]): return True
+    if n.lower() in ["unknown", "none", "n/a", "?"]: return True
     return False
 
-def extract_name(title):
-    name = title.split('|')[0].split(' - ')[0].split('::')[0].strip()
-    for suffix in ['Facebook', 'Instagram', 'LinkedIn', 'Zomato', 'JustDial', '...']:
-        if name.endswith(suffix):
-            name = name[:-len(suffix)].strip(' -|:')
-    return name.strip()
+def get_bbox(location):
+    loc = location.lower().strip()
+    return CITY_BBOX.get(loc, None)
 
-def is_news_site(url):
-    return any(d in url.lower() for d in SKIP_DOMAINS)
-
-def is_platform(url):
-    return any(d in url.lower() for d in PLATFORM_DOMAINS)
+def get_osm_tags(niche):
+    niche_lower = niche.lower().strip()
+    # Exact match first
+    if niche_lower in NICHE_MAP:
+        return NICHE_MAP[niche_lower]
+    # Partial match
+    for key, tags in NICHE_MAP.items():
+        if key in niche_lower or niche_lower in key:
+            return tags
+    # Default: search as shop type
+    return {"shop": niche_lower.replace(' ', '_')}
 
 class Vault:
     def __init__(self):
@@ -75,90 +138,152 @@ class Vault:
     def save(self, niche, location, lead):
         try:
             with sqlite3.connect(DB_PRODUCTION_PATH) as conn:
-                conn.execute(
-                    "INSERT OR REPLACE INTO leads_3 VALUES (NULL,?,?,?,?,?,?,?,?,?)",
-                    (niche, location, lead["Name"], lead.get("Website","None"), "None", "None",
-                     lead.get("Social","None"), lead.get("Score", 8.5), "v38.1"))
+                conn.execute("INSERT OR REPLACE INTO leads_3 VALUES (NULL,?,?,?,?,?,?,?,?,?)",
+                    (niche, location, lead["Name"], lead.get("Website","None"), 
+                     lead.get("Phone","None"), lead.get("Email","None"),
+                     lead.get("Social","None"), lead.get("Score",8.5), "v39.0"))
                 conn.commit()
         except: pass
 
+def discover_overpass(niche, location, target):
+    """PRIMARY: OpenStreetMap Overpass API - works from ANY IP"""
+    safe_print(f"DEBUG: Overpass Discovery for '{niche}' in {location}...")
+    
+    bbox = get_bbox(location)
+    osm_tags = get_osm_tags(niche)
+    
+    if not bbox:
+        # Try Nominatim geocoding to get bbox
+        safe_print(f"DEBUG: Looking up coordinates for '{location}'...")
+        try:
+            r = requests.get(
+                f"https://nominatim.openstreetmap.org/search?q={location}+India&format=json&limit=1",
+                headers={"User-Agent": "LeadsFlow/1.0"}, timeout=10)
+            if r.status_code == 200 and r.json():
+                data = r.json()[0]
+                bb = data.get('boundingbox', [])
+                if len(bb) == 4:
+                    bbox = (float(bb[0]), float(bb[2]), float(bb[1]), float(bb[3]))
+                    safe_print(f"DEBUG: Coordinates found: {bbox}")
+        except: pass
+    
+    if not bbox:
+        safe_print("DEBUG: Using broad India bbox as fallback")
+        bbox = DEFAULT_BBOX
+    
+    # Build Overpass query
+    tag_key = list(osm_tags.keys())[0]
+    tag_val = list(osm_tags.values())[0]
+    limit = max(target * 3, 30)
+    
+    query = f"""[out:json][timeout:30];
+(
+  node["{tag_key}"="{tag_val}"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});
+  way["{tag_key}"="{tag_val}"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});
+);
+out body {limit};
+"""
+    
+    results = []
+    try:
+        r = requests.post("https://overpass-api.de/api/interpreter", 
+                         data={"data": query}, timeout=35)
+        if r.status_code == 200:
+            data = r.json()
+            elements = data.get('elements', [])
+            safe_print(f"DEBUG: Overpass returned {len(elements)} POIs")
+            
+            for e in elements:
+                tags = e.get('tags', {})
+                name = tags.get('name', tags.get('name:en', ''))
+                if not name or is_junk(name): continue
+                
+                phone = tags.get('phone', tags.get('contact:phone', 'None'))
+                website = tags.get('website', tags.get('contact:website', 'None'))
+                email = tags.get('email', tags.get('contact:email', 'None'))
+                facebook = tags.get('contact:facebook', 'None')
+                instagram = tags.get('contact:instagram', 'None')
+                
+                social = facebook if facebook != 'None' else instagram
+                
+                # Score: businesses WITHOUT website = higher intent (they need one!)
+                if website == 'None':
+                    score = 9.8
+                else:
+                    score = 7.5
+                
+                results.append({
+                    "Name": name, "Phone": phone, "Website": website,
+                    "Email": email, "Social": social, "Score": score
+                })
+        else:
+            safe_print(f"DEBUG: Overpass returned {r.status_code}")
+    except Exception as e:
+        safe_print(f"DEBUG: Overpass error: {str(e)[:60]}")
+    
+    return results
+
+def discover_ddgs_fallback(niche, location, target):
+    """FALLBACK: DDGS library (works on local, may fail on cloud)"""
+    safe_print(f"DEBUG: DDGS Fallback for '{niche}' in {location}...")
+    results = []
+    try:
+        from ddgs import DDGS
+        queries = [
+            f"{niche} {location} India",
+            f"best {niche} in {location}",
+        ]
+        seen = set()
+        for q in queries:
+            try:
+                hits = DDGS().text(q, max_results=15)
+                for h in hits:
+                    url = h.get('href','')
+                    if url not in seen:
+                        seen.add(url)
+                        name = h['title'].split('|')[0].split('-')[0].strip()
+                        if not is_junk(name):
+                            results.append({"Name": name, "Website": url, "Score": 8.5})
+            except: pass
+            time.sleep(2)
+    except:
+        safe_print("DEBUG: DDGS not available")
+    return results
+
 def hunt(niche, location, target):
     try:
-        # Fix common typos
         if "state" in niche.lower() and "real" in niche.lower():
             niche = "Real Estate"
         
-        safe_print(f">>> Absolute Titan v38.1 Active. Target: {target} for '{niche}' in {location}")
+        safe_print(f">>> Immortal Titan v39.0 Active. Target: {target} for '{niche}' in {location}")
         
-        # Import ddgs inside function for clean error reporting
-        from ddgs import DDGS
+        # Phase 1: Overpass (ALWAYS works on cloud)
+        leads_raw = discover_overpass(niche, location, target)
+        safe_print(f"DEBUG: Overpass found {len(leads_raw)} clean leads")
         
-        # Multiple queries for maximum coverage
-        queries = [
-            f"{niche} {location} India",
-            f"{niche} near {location} facebook instagram",
-            f"best {niche} in {location} India",
-            f"top {niche} {location} justdial zomato",
-            f"{niche} {location} India linkedin indiamart",
-        ]
+        # Phase 2: DDGS fallback if Overpass returned too few
+        if len(leads_raw) < target:
+            ddgs_raw = discover_ddgs_fallback(niche, location, target - len(leads_raw))
+            leads_raw.extend(ddgs_raw)
+            safe_print(f"DEBUG: Total after DDGS fallback: {len(leads_raw)}")
         
-        raw = []
-        seen_urls = set()
-        
-        for qi, query in enumerate(queries):
-            safe_print(f"DEBUG: Query {qi+1}/{len(queries)}: {query[:40]}...")
-            try:
-                results = DDGS().text(query, max_results=15)
-                for r in results:
-                    url = r.get('href', '')
-                    if url not in seen_urls:
-                        seen_urls.add(url)
-                        raw.append(r)
-                safe_print(f"DEBUG: Got {len(results)} from query {qi+1}")
-            except Exception as e:
-                safe_print(f"DEBUG: Query {qi+1} err: {str(e)[:50]}")
-            time.sleep(random.uniform(2, 4))
-        
-        safe_print(f"DEBUG: Total raw: {len(raw)}")
-        
-        # FILTER: Accept ALL results except news sites and junk names
-        leads = []
-        seen_names = set()
+        # Phase 3: Deduplicate and finalize
         vault = Vault()
+        final = []
+        seen = set()
         
-        for r in raw:
-            if len(leads) >= target: break
+        for lead in leads_raw:
+            if len(final) >= target: break
+            name_key = lead["Name"].lower().strip()
+            if name_key in seen: continue
+            seen.add(name_key)
             
-            title = r.get('title', '')
-            url = r.get('href', '')
-            
-            # Skip news/media sites
-            if is_news_site(url): continue
-            
-            # Extract and validate name
-            name = extract_name(title)
-            if is_junk_name(name): continue
-            if name.lower() in seen_names: continue
-            seen_names.add(name.lower())
-            
-            # Score: Platform listings get higher score
-            if is_platform(url):
-                score = 9.8
-                social = url
-                website = "None"
-            else:
-                score = 8.5
-                social = "None"
-                website = url
-            
-            lead = {"Name": name, "Social": social, "Website": website, "Score": score}
             vault.save(niche, location, lead)
-            leads.append(lead)
-            safe_print(f"PROGRESS:{len(leads)}:{target}:SECURED: {name[:25].encode('ascii','ignore').decode()}")
+            final.append(lead)
+            safe_print(f"PROGRESS:{len(final)}:{target}:SECURED: {lead['Name'][:25].encode('ascii','ignore').decode()}")
         
-        safe_print(f">>> Session Complete. {len(leads)} prospects secured.")
-        return leads
-        
+        safe_print(f">>> Session Complete. {len(final)} prospects secured.")
+        return final
     except Exception as e:
         safe_print(f"FATAL_ERROR: {str(e)}")
         import traceback
@@ -183,11 +308,10 @@ if __name__ == "__main__":
                 writer.writerow({
                     "Company Name": d["Name"],
                     "Website": d.get("Website", "None"),
-                    "WhatsApp": "None",
-                    "Email ID": "None",
+                    "WhatsApp": d.get("Phone", "None"),
+                    "Email ID": d.get("Email", "None"),
                     "Social": d.get("Social", "None"),
                     "Score": d["Score"],
-                    "Source": "v38.1"
+                    "Source": "v39.0"
                 })
-    
     safe_print("DONE")

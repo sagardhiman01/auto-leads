@@ -71,7 +71,7 @@ hunt_status = {"is_running": False, "progress": "Ready", "percent": 0, "last_res
 def run_hunt(ctx, user_id, niche, location, count):
     with ctx:
         try:
-            hunt_status.update({"is_running": True, "progress": "Launching Engine v38.0 (Absolute Titan)...", "percent": 5, "last_result": None})
+            hunt_status.update({"is_running": True, "progress": "Launching Engine v39.0 (Immortal Titan)...", "percent": 5, "last_result": None})
             print(f">>> STARTING HUNT: {niche} in {location}", flush=True)
             
             batch = Batch(user_id=user_id, niche=niche, location=location)
@@ -125,11 +125,11 @@ def run_hunt(ctx, user_id, niche, location, count):
                             phone=row.get('WhatsApp', 'None'), 
                             email=row.get('Email ID', 'None'), 
                             social=row.get('Social', 'None'),
-                            source=row.get('Source', 'v38.0'),
+                            source=row.get('Source', 'v39.0'),
                             score=float(row.get('Score', 8.5))
                         ))
                     db.session.commit()
-                hunt_status["last_result"] = f"Success: Absolute Titan v38.0 secured genuine B2B prospects."
+                hunt_status["last_result"] = f"Success: Immortal Titan v39.0 secured {len(list(csv.DictReader(open(csv_path,'r',encoding='utf-8',errors='replace'))))} genuine B2B prospects."
             else:
                 log_tail = " | ".join(full_log[-3:]) if full_log else "No Stdout"
                 err_tail = " | ".join(err_log[-2:]) if err_log else "No Stderr"
