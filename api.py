@@ -71,14 +71,14 @@ hunt_status = {"is_running": False, "progress": "Ready", "percent": 0, "last_res
 def run_hunt(ctx, user_id, niche, location, count):
     with ctx:
         try:
-            hunt_status.update({"is_running": True, "progress": "Launching Engine v35.0 (Scrub Titan)...", "percent": 5, "last_result": None})
+            hunt_status.update({"is_running": True, "progress": "Launching Engine v36.0 (Logging Titan)...", "percent": 5, "last_result": None})
             print(f">>> STARTING HUNT: {niche} in {location}", flush=True)
             
             batch = Batch(user_id=user_id, niche=niche, location=location)
             db.session.add(batch)
             db.session.commit()
 
-            engine_path = os.path.join(ROOT, "engine.py")
+            engine_path = os.path.abspath(os.path.join(ROOT, "engine.py"))
             csv_path = os.path.join(ROOT, "leads.csv")
             if os.path.exists(csv_path): os.remove(csv_path)
 
@@ -88,6 +88,7 @@ def run_hunt(ctx, user_id, niche, location, count):
             )
 
             full_log = []
+            err_log = []
             while True:
                 line = proc.stdout.readline()
                 if not line and proc.poll() is not None: break
@@ -101,6 +102,12 @@ def run_hunt(ctx, user_id, niche, location, count):
                             curr, total, msg = int(parts[1]), int(parts[2]), parts[3]
                             pct = int((curr / total) * 90) + 5
                             hunt_status.update({"progress": msg, "percent": pct})
+
+            # Capture any remaining stderr
+            stderr_out = proc.stderr.read().strip()
+            if stderr_out:
+                print(f"ENGINE_ERROR: {stderr_out}", flush=True)
+                err_log.append(stderr_out)
 
             proc.wait(timeout=900)
             exit_code = proc.returncode
@@ -118,14 +125,15 @@ def run_hunt(ctx, user_id, niche, location, count):
                             phone=row.get('WhatsApp', 'None'), 
                             email=row.get('Email ID', 'None'), 
                             social=row.get('Social', 'None'),
-                            source=row.get('Source', 'v35.0'),
-                            score=float(row.get('Score', 5.0))
+                            source=row.get('Source', 'v36.0'),
+                            score=float(row.get('Score', 8.5))
                         ))
                     db.session.commit()
-                hunt_status["last_result"] = f"Success: Scrub Titan successfully Purified and synchronized leads."
+                hunt_status["last_result"] = f"Success: Logging Titan Analyzed prospects. Version 36.0 Active."
             else:
-                log_tail = " | ".join(full_log[-5:]) if full_log else "No output"
-                hunt_status["last_result"] = f"Failure: 0 leads. Log: {log_tail}"
+                log_tail = " | ".join(full_log[-3:]) if full_log else "No Stdout"
+                err_tail = " | ".join(err_log[-2:]) if err_log else "No Stderr"
+                hunt_status["last_result"] = f"Failure: 0 leads. [OUT: {log_tail}] [ERR: {err_tail}]"
 
         except Exception as e:
             print(f">>> HUNT SYSTEM ERROR: {e}", flush=True)
